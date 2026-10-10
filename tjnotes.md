@@ -380,3 +380,9 @@ Hunk #2 succeeded at 569 (offset 9 lines).
 $ sudo dkms remove rtw89/7.3davenport --all
 $ sudo rm -rf /usr/src/rtw89-7.3davenport/
 $ sudo dkms install $PWD
+
+> No change to modprobe.d/rtw89*
+
+$ sudo modprobe -r rtw89_8852cu_git rtw89_usb_git rtw89_8852c_git rtw89_core_git
+$ sudo modprobe rtw89_8852cu_git
+
