@@ -21,6 +21,12 @@ void rtw89_regd_notifier(struct wiphy *wiphy, struct regulatory_request *request
 
 static_assert(BITS_PER_TYPE(unsigned long) >= NUM_OF_RTW89_REGD_FUNC);
 
+static int rtw89_reg6_pwr_override = -1;
+module_param_named(reg6_pwr_override, rtw89_reg6_pwr_override, int, 0644);
+MODULE_PARM_DESC(reg6_pwr_override,
+		 "Override the 6 GHz regulatory power class taken from the AP while associated "
+		 "(-1: follow AP [default], 0: VLP, 1: LPI, 2: SP). Takes effect on the next association.");
+
 static const struct rtw89_regd rtw89_ww_regd =
 	COUNTRY_REGD("00", RTW89_WW, RTW89_WW, RTW89_WW, 0x0);
 
@@ -1172,6 +1178,16 @@ static int rtw89_reg_6ghz_power_recalc(struct rtw89_dev *rtwdev,
 	}
 
 	rcu_read_unlock();
+
+	if (active && rtw89_reg6_pwr_override >= 0 &&
+	    rtw89_reg6_pwr_override < NUM_OF_RTW89_REG_6GHZ_POWER &&
+	    rtwvif_link->reg_6ghz_power != rtw89_reg6_pwr_override) {
+		rtw89_info(rtwdev,
+			   "6 GHz power type %u (from AP) overridden to %d by reg6_pwr_override\n",
+			   rtwvif_link->reg_6ghz_power, rtw89_reg6_pwr_override);
+		rtwvif_link->reg_6ghz_power = rtw89_reg6_pwr_override;
+		dflt = false;
+	}
 
 	if (!dflt && blocked[rtwvif_link->reg_6ghz_power]) {
 		rtw89_debug(rtwdev, RTW89_DBG_REGD,

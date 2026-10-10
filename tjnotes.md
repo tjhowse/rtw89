@@ -304,7 +304,7 @@ Applied two davenport patches, uninstalled rtw89 7.3, installed rtw89 7.3davenpo
 $ sudo dkms remove rtw89/7.3 --all
 $ sudo rm -rf /usr/src/rtw89-7.3/
 
-$ modinfo rtw89_core_git
+9$ modinfo rtw89_core_git
 filename:       /lib/modules/7.0.0-38-generic/updates/dkms/rtw89_core_git.ko.zst
 license:        Dual BSD/GPL
 description:    Realtek 802.11ax wireless core module
