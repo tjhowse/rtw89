@@ -386,3 +386,9 @@ $ sudo dkms install $PWD
 $ sudo modprobe -r rtw89_8852cu_git rtw89_usb_git rtw89_8852c_git rtw89_core_git
 $ sudo modprobe rtw89_8852cu_git
 
+Half-hour of alyx: performance is great. Dongle warm-ish.
+
+Played another half an hour with low-latency mode turned on. Very good performance, but buggy.
+
+Switched to proton experimental and played for another hour. No crashes. Slight graphical wonkiness.
+
