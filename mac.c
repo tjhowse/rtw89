@@ -5800,6 +5800,14 @@ rtw89_mac_c2h_mcc_status_rpt(struct rtw89_dev *rtwdev, struct sk_buff *c2h, u32 
 	rtw89_complete_cond(&rtwdev->mcc.wait, cond, &data);
 }
 
+static uint rtw89_tx_rpt_status[4];
+module_param_array_named(tx_rpt_status, rtw89_tx_rpt_status, uint, NULL, 0644);
+MODULE_PARM_DESC(tx_rpt_status, "TX reports by state: done, retry limit, lifetime, macid drop");
+
+static uint rtw89_tx_rpt_txcnt[64];
+module_param_array_named(tx_rpt_txcnt, rtw89_tx_rpt_txcnt, uint, NULL, 0644);
+MODULE_PARM_DESC(tx_rpt_txcnt, "TX reports by state (rows of 16) and transmit count");
+
 static void
 rtw89_mac_c2h_tx_rpt(struct rtw89_dev *rtwdev, struct sk_buff *c2h, u32 len)
 {
@@ -5835,6 +5843,8 @@ rtw89_mac_c2h_tx_rpt(struct rtw89_dev *rtwdev, struct sk_buff *c2h, u32 len)
 	rtw89_debug(rtwdev, RTW89_DBG_TXRX,
 		    "C2H TX RPT: sn %d, tx_status %d, txcnt %d\n",
 		    sw_define, tx_status, txcnt);
+	rtw89_tx_rpt_status[tx_status & 3]++;
+	rtw89_tx_rpt_txcnt[(tx_status & 3) * 16 + min_t(u8, txcnt, 15)]++;
 
 	/* claim sw_define is not over size of tx_rpt->skbs[] */
 	static_assert(hweight32(RTW89_MAX_TX_RPTS_MASK) ==
