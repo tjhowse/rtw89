@@ -392,3 +392,13 @@ Played another half an hour with low-latency mode turned on. Very good performan
 
 Switched to proton experimental and played for another hour. No crashes. Slight graphical wonkiness.
 
+# 2026-10-10
+
+Merged torsten and davenport.
+
+$ sudo dkms remove rtw89/7.3torsten --all
+$ sudo rm -rf /usr/src/rtw89-7.3torsten/
+$ sudo dkms install $PWD
+$ sudo modprobe -r rtw89_8852cu_git rtw89_usb_git rtw89_8852c_git rtw89_core_git
+$ sudo modprobe rtw89_8852cu_git
+$ sudo ./holo-realtek-firmware-toggles set-low-latency-mode on
