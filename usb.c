@@ -176,21 +176,51 @@ static void rtw89_usb_write32_quiet(struct rtw89_dev *rtwdev, u32 addr, u32 val)
 			      RTW89_USB_VENQT_WRITE, false);
 }
 
+static bool rtw89_usb_tx_agg = true;
+module_param_named(tx_agg, rtw89_usb_tx_agg, bool, 0644);
+MODULE_PARM_DESC(tx_agg, "Pack queued data frames into one USB transfer (default: true)");
+
+static uint rtw89_usb_tx_agg_max_num = 127;
+module_param_named(tx_agg_max_num, rtw89_usb_tx_agg_max_num, uint, 0644);
+MODULE_PARM_DESC(tx_agg_max_num, "Most frames in one aggregated USB transfer (default: 127, the hardware limit)");
+
+static uint rtw89_usb_tx_agg_max_bytes = 20480;
+module_param_named(tx_agg_max_bytes, rtw89_usb_tx_agg_max_bytes, uint, 0644);
+MODULE_PARM_DESC(tx_agg_max_bytes, "Largest aggregated USB transfer in bytes (default and most: 20480)");
+
+/* the TX resource check counts URBs, not frames: a low cap starves TX */
+static uint rtw89_usb_tx_agg_max_inflight = RTW89_USB_MAX_TX_URBS_PER_CH;
+module_param_named(tx_agg_max_inflight, rtw89_usb_tx_agg_max_inflight, uint, 0644);
+MODULE_PARM_DESC(tx_agg_max_inflight, "TX URBs in flight per channel while aggregating (default: 128)");
+
+/* Realtek's vendor driver leaves WD_PAGE clear on USB */
+static bool rtw89_usb_tx_wd_page;
+module_param_named(tx_wd_page, rtw89_usb_tx_wd_page, bool, 0644);
+MODULE_PARM_DESC(tx_wd_page, "Set WD_PAGE in data WDs like PCIe does (default: false)");
+
+static bool rtw89_usb_tx_rpt_all;
+module_param_named(tx_rpt_all, rtw89_usb_tx_rpt_all, bool, 0644);
+MODULE_PARM_DESC(tx_rpt_all, "Request a firmware TX report for every data frame (diagnostic, default: false)");
+
 static u32
 rtw89_usb_ops_check_and_reclaim_tx_resource(struct rtw89_dev *rtwdev,
 					    u8 txch)
 {
 	struct rtw89_usb *rtwusb = rtw89_usb_priv(rtwdev);
+	int limit = RTW89_USB_MAX_TX_URBS_PER_CH;
 	int inflight;
 
 	if (txch == RTW89_TXCH_CH12)
 		return 1;
 
+	if (rtw89_usb_tx_agg)
+		limit = clamp_t(int, rtw89_usb_tx_agg_max_inflight, 1, RTW89_USB_MAX_TX_URBS_PER_CH);
+
 	inflight = atomic_read(&rtwusb->tx_inflight[txch]);
-	if (inflight >= RTW89_USB_MAX_TX_URBS_PER_CH)
+	if (inflight >= limit)
 		return 0;
 
-	return RTW89_USB_MAX_TX_URBS_PER_CH - inflight;
+	return limit - inflight;
 }
 
 static void rtw89_usb_write_port_complete(struct urb *urb)
@@ -258,6 +288,7 @@ static void rtw89_usb_write_port_complete(struct urb *urb)
 
 	atomic_dec(&rtwusb->tx_inflight[txcb->txch]);
 
+	kfree(txcb->agg_buf);
 	kfree(txcb);
 }
 
@@ -311,11 +342,109 @@ static void rtw89_usb_tx_free_skb(struct rtw89_dev *rtwdev, u8 txch,
 		ieee80211_free_txskb(rtwdev->hw, skb);
 }
 
+static u32 rtw89_usb_wd_len(struct rtw89_dev *rtwdev, struct sk_buff *skb)
+{
+	struct rtw89_txwd_body *txdesc = (struct rtw89_txwd_body *)skb->data;
+	u32 len = rtwdev->chip->txwd_body_size;
+
+	if (le32_get_bits(txdesc->dword0, RTW89_TXWD_BODY0_WD_INFO_EN))
+		len += rtwdev->chip->txwd_info_size;
+
+	return len;
+}
+
+static bool rtw89_usb_is_data(struct rtw89_dev *rtwdev, struct sk_buff *skb)
+{
+	u32 wd_len = rtw89_usb_wd_len(rtwdev, skb);
+	struct ieee80211_hdr *hdr;
+
+	if (skb->len < wd_len + sizeof(hdr->frame_control))
+		return false;
+
+	hdr = (struct ieee80211_hdr *)(skb->data + wd_len);
+	return ieee80211_is_data(hdr->frame_control);
+}
+
+/* Copy data frames already waiting behind @first into one buffer, the way
+ * Realtek's vendor driver aggregates: each frame keeps its own WD and starts
+ * 8-byte aligned, at most RTW89_USB_TX_AGG_WD_PER_BULK WDs start in one bulk
+ * packet, no WD ends on a bulk boundary and the transfer is not a multiple of
+ * the bulk size. Returns the buffer (NULL when nothing was added) and its length.
+ */
+static void *rtw89_usb_tx_agg_build(struct rtw89_dev *rtwdev, u8 txch,
+				    struct rtw89_usb_tx_ctrl_block *txcb,
+				    struct sk_buff *first, u32 *len)
+{
+	struct rtw89_usb *rtwusb = rtw89_usb_priv(rtwdev);
+	struct sk_buff_head *q = &rtwusb->tx_queue[txch];
+	u32 bulk = rtwusb->udev->speed >= USB_SPEED_SUPER ? 1024 : 512;
+	u32 max_num = min_t(u32, rtw89_usb_tx_agg_max_num, RTW89_USB_TX_AGG_MAX_NUM);
+	u32 max_bytes = min_t(u32, rtw89_usb_tx_agg_max_bytes, RTW89_USB_TX_AGG_SIZE);
+	u32 num = 1, chunk = 0, chunk_wd = 1, prev_len = 0;
+	struct sk_buff *next;
+	unsigned long flags;
+	u8 *buf;
+
+	if (!rtw89_usb_tx_agg || txch == RTW89_TXCH_CH12 ||
+	    skb_queue_empty(q) || !rtw89_usb_is_data(rtwdev, first))
+		return NULL;
+
+	buf = kmalloc(RTW89_USB_TX_AGG_SIZE, GFP_ATOMIC);
+	if (!buf)
+		return NULL;
+
+	memcpy(buf, first->data, first->len);
+	*len = first->len;
+
+	spin_lock_irqsave(&q->lock, flags);
+	while ((next = skb_peek(q))) {
+		u32 off = ALIGN(*len, 8);
+		u32 wd = rtw89_usb_wd_len(rtwdev, next);
+
+		if (num >= max_num || off + next->len > max_bytes ||
+		    (off + wd) % bulk == 0 || !rtw89_usb_is_data(rtwdev, next))
+			break;
+		if (off / bulk != chunk) {
+			chunk = off / bulk;
+			chunk_wd = 0;
+		}
+		if (++chunk_wd > RTW89_USB_TX_AGG_WD_PER_BULK)
+			break;
+
+		__skb_unlink(next, q);
+		memset(buf + *len, 0, off - *len);
+		memcpy(buf + off, next->data, next->len);
+		prev_len = *len;
+		*len = off + next->len;
+		num++;
+		skb_queue_tail(&txcb->tx_ack_queue, next);
+	}
+
+	if (num > 1 && *len % bulk == 0) {
+		next = skb_dequeue_tail(&txcb->tx_ack_queue);
+		__skb_queue_head(q, next);
+		*len = prev_len;
+		num--;
+	}
+	spin_unlock_irqrestore(&q->lock, flags);
+
+	if (num == 1) {
+		kfree(buf);
+		return NULL;
+	}
+
+	le32p_replace_bits(&((struct rtw89_txwd_body *)buf)->dword1, num,
+			   RTW89_USB_TXWD_BODY1_DMA_TXAGG_NUM);
+	return buf;
+}
+
 static void rtw89_usb_ops_tx_kick_off(struct rtw89_dev *rtwdev, u8 txch)
 {
 	struct rtw89_usb *rtwusb = rtw89_usb_priv(rtwdev);
 	struct rtw89_usb_tx_ctrl_block *txcb;
 	struct sk_buff *skb;
+	void *data;
+	u32 len;
 	int ret;
 
 	while (true) {
@@ -339,10 +468,17 @@ static void rtw89_usb_ops_tx_kick_off(struct rtw89_dev *rtwdev, u8 txch)
 
 		skb_queue_tail(&txcb->tx_ack_queue, skb);
 
+		txcb->agg_buf = rtw89_usb_tx_agg_build(rtwdev, txch, txcb, skb, &len);
+		if (txcb->agg_buf) {
+			data = txcb->agg_buf;
+		} else {
+			data = skb->data;
+			len = skb->len;
+		}
+
 		atomic_inc(&rtwusb->tx_inflight[txch]);
 
-		ret = rtw89_usb_write_port(rtwdev, txch, skb->data, skb->len,
-					   txcb);
+		ret = rtw89_usb_write_port(rtwdev, txch, data, len, txcb);
 		if (ret) {
 			atomic_dec(&rtwusb->tx_inflight[txch]);
 
@@ -350,9 +486,10 @@ static void rtw89_usb_ops_tx_kick_off(struct rtw89_dev *rtwdev, u8 txch)
 				rtw89_err(rtwdev, "write port txch %d failed: %d\n",
 					  txch, ret);
 
-			skb_dequeue(&txcb->tx_ack_queue);
+			while ((skb = skb_dequeue(&txcb->tx_ack_queue)))
+				rtw89_usb_tx_free_skb(rtwdev, txch, skb);
+			kfree(txcb->agg_buf);
 			kfree(txcb);
-			rtw89_usb_tx_free_skb(rtwdev, txch, skb);
 		}
 	}
 }
@@ -430,6 +567,11 @@ static int rtw89_usb_ops_tx_write(struct rtw89_dev *rtwdev,
 	rtw89_chip_fill_txdesc(rtwdev, desc_info, txdesc);
 
 	le32p_replace_bits(&txdesc->dword0, 1, RTW89_TXWD_BODY0_STF_MODE);
+	if (!rtw89_usb_tx_wd_page)
+		le32p_replace_bits(&txdesc->dword0, 0, RTW89_TXWD_BODY0_WD_PAGE);
+	if (rtw89_usb_tx_rpt_all && tx_req->tx_type == RTW89_CORE_TX_TYPE_DATA &&
+	    desc_info->en_wd_info && !desc_info->report)
+		le32p_replace_bits((__le32 *)txdesc + 8 + 3, 1, RTW89_TXWD_INFO3_SPE_RPT);
 
 	skb_data = RTW89_TX_SKB_CB(skb);
 	if (tx_req->desc_info.sn)

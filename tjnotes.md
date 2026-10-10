@@ -304,7 +304,7 @@ Applied two davenport patches, uninstalled rtw89 7.3, installed rtw89 7.3davenpo
 $ sudo dkms remove rtw89/7.3 --all
 $ sudo rm -rf /usr/src/rtw89-7.3/
 
-9$ modinfo rtw89_core_git
+$ modinfo rtw89_core_git
 filename:       /lib/modules/7.0.0-38-generic/updates/dkms/rtw89_core_git.ko.zst
 license:        Dual BSD/GPL
 description:    Realtek 802.11ax wireless core module
@@ -353,3 +353,30 @@ Oct 09 22:38:17 obelisk kernel: rtw89_8852cu_git 2-5:1.0: 6 GHz power type 0 (fr
 Results: Dongle connects, dual-link streaming works, headset movement causes bad packet loss on non-dongle link when head in motion, same as before. Dongle warm to the touch.
 Performance in walkabout VR fine. Performance in alyx fine/poor. Dongle link is very sensitive to heading. When facing away from the dongle bending down, occluding the headset with my head, causes bad stream drops.
 
+# 2026-10-10
+
+New fresh branch "torsten"
+
+tjhowse@obelisk:~/devstuff/steam_frame/rtw89$ patch -p1 < ../steam-frame-tinkering/rtw89-usbagg/patches/0001-usb-tx-aggregation.patch
+patching file usb.c
+Hunk #1 succeeded at 176 (offset 5 lines).
+Hunk #2 succeeded at 279 (offset 5 lines).
+Hunk #3 succeeded at 333 (offset 5 lines).
+Hunk #4 succeeded at 459 (offset 9 lines).
+Hunk #5 succeeded at 477 (offset 9 lines).
+patching file usb.h
+tjhowse@obelisk:~/devstuff/steam_frame/rtw89$ patch -p1 < ../steam-frame-tinkering/rtw89-usbagg/patches/0002-usb-clear-wd-page.patch
+patching file usb.c
+Hunk #1 succeeded at 193 (offset 5 lines).
+Hunk #2 succeeded at 563 (offset 9 lines).
+tjhowse@obelisk:~/devstuff/steam_frame/rtw89$ patch -p1 < ../steam-frame-tinkering/rtw89-usbagg/patches/0003-tx-report-stats.patch
+patching file mac.c
+Hunk #1 succeeded at 5800 (offset 10 lines).
+Hunk #2 succeeded at 5843 (offset 10 lines).
+patching file usb.c
+Hunk #1 succeeded at 198 (offset 5 lines).
+Hunk #2 succeeded at 569 (offset 9 lines).
+
+$ sudo dkms remove rtw89/7.3davenport --all
+$ sudo rm -rf /usr/src/rtw89-7.3davenport/
+$ sudo dkms install $PWD

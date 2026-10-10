@@ -59,10 +59,17 @@ struct rtw89_usb_rx_ctrl_block {
 	struct sk_buff *rx_skb;
 };
 
+#define RTW89_USB_TX_AGG_SIZE		20480
+#define RTW89_USB_TX_AGG_MAX_NUM	127
+#define RTW89_USB_TX_AGG_WD_PER_BULK	8
+/* first WD of an aggregate carries the frame count (AX_TXD_DMA_TXAGG_NUM_V1) */
+#define RTW89_USB_TXWD_BODY1_DMA_TXAGG_NUM GENMASK(14, 8)
+
 struct rtw89_usb_tx_ctrl_block {
 	struct rtw89_dev *rtwdev;
 	u8 txch;
 	struct sk_buff_head tx_ack_queue;
+	void *agg_buf;
 };
 
 struct rtw89_usb {
