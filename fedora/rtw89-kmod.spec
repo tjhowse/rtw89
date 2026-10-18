@@ -93,6 +93,12 @@ done
 for kernel_version in %{?kernel_versions} ; do
     make -j$(nproc --ignore=1) -C "${kernel_version##*___}" M="${PWD}/_kmod_build_${kernel_version%%___*}" \
         KVER="${kernel_version%%___*}" KDIR="${kernel_version##*___}" modules
+    make -j$(nproc --ignore=1) \
+        -C "${kernel_version##*___}" \
+        M="${PWD}/_kmod_build_${kernel_version%%___*}" \
+        KVER="${kernel_version%%___*}" \
+        KDIR="${kernel_version##*___}" \
+        modules
 done
 
 # Number of modules the driver Makefile is expected to produce (21: core +
