@@ -425,4 +425,4 @@ And for good measure
 
 $ sudo make install_fw
 
-Green LED on dongle without steamvr running? Is that new?
+Green LED on dongle without steamvr running? Is that new? Maybe not? The headset was still on.
