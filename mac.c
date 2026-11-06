@@ -4092,7 +4092,8 @@ static int rtw89_mac_feat_init(struct rtw89_dev *rtwdev)
 	const struct rtw89_chip_info *chip = rtwdev->chip;
 	u8 users, offset;
 
-	if (chip->bacam_ver != RTW89_BACAM_V1)
+	if (!(chip->bacam_ver == RTW89_BACAM_V1 ||
+	      chip->bacam_ver == RTW89_BACAM_G7))
 		return 0;
 
 	offset = 0;
@@ -5905,6 +5906,13 @@ rtw89_mac_c2h_wow_aoac_rpt(struct rtw89_dev *rtwdev, struct sk_buff *skb, u32 le
 		(const struct rtw89_c2h_wow_aoac_report *)skb->data;
 	struct rtw89_completion_data data = {};
 
+	if (skb->len < sizeof(*c2h)) {
+		rtw89_warn(rtwdev, "wow: aoac rpt skb len %u is too short\n",
+			   skb->len);
+		data.err = true;
+		goto out;
+	}
+
 	aoac_rpt->rpt_ver = c2h->rpt_ver;
 	aoac_rpt->sec_type = c2h->sec_type;
 	aoac_rpt->key_idx = c2h->key_idx;
@@ -5921,6 +5929,7 @@ rtw89_mac_c2h_wow_aoac_rpt(struct rtw89_dev *rtwdev, struct sk_buff *skb, u32 le
 	aoac_rpt->igtk_ipn = le64_to_cpu(c2h->igtk_ipn);
 	memcpy(aoac_rpt->igtk, c2h->igtk, sizeof(aoac_rpt->igtk));
 
+out:
 	rtw89_complete_cond(wait, RTW89_WOW_WAIT_COND_AOAC, &data);
 }
 
@@ -6055,10 +6064,7 @@ rtw89_mac_c2h_pwr_int_notify(struct rtw89_dev *rtwdev, struct sk_buff *skb, u32 
 		goto out;
 
 	rtwsta = rtwsta_link->rtwsta;
-	if (ps)
-		set_bit(RTW89_REMOTE_STA_IN_PS, rtwsta->flags);
-	else
-		clear_bit(RTW89_REMOTE_STA_IN_PS, rtwsta->flags);
+	assign_bit(RTW89_REMOTE_STA_IN_PS, rtwsta->flags, ps);
 
 	sta = rtwsta_to_sta(rtwsta);
 	ieee80211_sta_ps_transition(sta, ps);
@@ -7013,10 +7019,7 @@ void rtw89_mac_bf_monitor_calc(struct rtw89_dev *rtwdev,
 					  &data);
 
 	rtw89_debug(rtwdev, RTW89_DBG_BF, "bfee STA count=%d\n", data.count);
-	if (data.count)
-		set_bit(RTW89_FLAG_BFEE_MON, rtwdev->flags);
-	else
-		clear_bit(RTW89_FLAG_BFEE_MON, rtwdev->flags);
+	assign_bit(RTW89_FLAG_BFEE_MON, rtwdev->flags, data.count);
 }
 
 void _rtw89_mac_bf_monitor_track(struct rtw89_dev *rtwdev)
