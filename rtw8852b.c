@@ -359,19 +359,18 @@ static int rtw8852b_read_efuse(struct rtw89_dev *rtwdev, u8 *log_map,
 	int ret;
 
 	ret = rtw8852bx_read_efuse(rtwdev, log_map, block);
+	if (ret)
+		return ret;
 
 	if (rtwdev->efuse.rfe_type == 41)
 		set_bit(RTW89_QUIRK_1ANT, rtwdev->quirks);
 
-	return ret;
+	return 0;
 }
 
 static void rtw8852b_pwr_sps_ana(struct rtw89_dev *rtwdev)
 {
-	struct rtw89_efuse *efuse = &rtwdev->efuse;
-
-	if (efuse->rfe_type == 0x5)
-		rtw89_write16(rtwdev, R_AX_SPS_ANA_ON_CTRL2, RTL8852B_RFE_05_SPS_ANA);
+	rtw89_write16(rtwdev, R_AX_SPS_ANA_ON_CTRL2, RTL8852B_DEFAULT_SPS_ANA);
 }
 
 static void rtw8852b_pwr_sps_dig_off(struct rtw89_dev *rtwdev)
@@ -764,6 +763,7 @@ static void rtw8852b_rfk_track(struct rtw89_dev *rtwdev)
 static void rtw8852b_btc_set_rfe(struct rtw89_dev *rtwdev)
 {
 	struct rtw89_btc_module *md = &rtwdev->btc.mdinfo;
+	struct rtw89_btc_dm *dm = &rtwdev->btc.dm;
 
 	md->rfe_type = rtwdev->efuse.rfe_type;
 	md->kt_ver = rtwdev->hal.cv;
@@ -778,12 +778,16 @@ static void rtw8852b_btc_set_rfe(struct rtw89_dev *rtwdev)
 	md->ant.diversity = 0;
 	md->ant.isolation = 10;
 
+	memset(dm->ant_xmap, 0, sizeof(dm->ant_xmap));
+
 	if (md->ant.num == 3) {
 		md->ant.type = BTC_ANT_DEDICATED;
 		md->bt0_pos = BTC_BT_ALONE;
 	} else {
 		md->ant.type = BTC_ANT_SHARED;
 		md->bt0_pos = BTC_BT_BTG;
+		/* the only BT shares the BTG antenna with WL path B */
+		dm->ant_xmap[BTC_RF_S1][BTC_BT_1ST] = 1;
 
 		if (test_bit(RTW89_QUIRK_1ANT, rtwdev->quirks)) {
 			md->ant.num = 1;

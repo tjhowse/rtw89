@@ -89,6 +89,7 @@ static const struct rtw89_led_desc rtw8852cu_valve_led_desc = {
 };
 
 static const struct rtw89_board_variant rtw89_8852cu_valve_board = {
+	.id = RTW89_BOARD_ID(28de, 2432),
 	.led_desc = &rtw8852cu_valve_led_desc,
 };
 
@@ -98,7 +99,8 @@ static const struct rtw89_driver_info rtw89_8852cu_valve_info = {
 	.variant = NULL,
 	.board = &rtw89_8852cu_valve_board,
 	.quirks = NULL,
-	.dev_id_quirks = BIT(RTW89_QUIRK_HW_INFO_SYSFS),
+	.dev_id_quirks = BIT(RTW89_QUIRK_HW_INFO_SYSFS) |
+			 BIT(RTW89_QUIRK_DISABLE_2GHZ),
 	.bus = {
 		.usb = &rtw8852c_usb_info,
 	},
