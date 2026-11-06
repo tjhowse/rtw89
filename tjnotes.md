@@ -403,4 +403,26 @@ $ sudo modprobe -r rtw89_8852cu_git rtw89_usb_git rtw89_8852c_git rtw89_core_git
 $ sudo modprobe rtw89_8852cu_git
 $ sudo ./holo-realtek-firmware-toggles set-low-latency-mode on
 
-Next try setting alyx to vulcan to see if that fixes the directional brightness bug.
+Next try setting alyx to vulcan to see if that fixes the directional brightness bug. - It did!
+
+# 2026-10-14
+
+Better Alyx performance after disabling low-latency mode? Huh?
+
+# 2026-10-15
+
+Merged upstream main into each branch. Should probably do it with rebases. Oh well.
+
+Updated torstendavenport.
+
+$ sudo dkms remove rtw89/7.3torstendavenport --all
+$ sudo rm -rf /usr/src/rtw89-7.3torstendavenport/
+$ sudo dkms install $PWD
+$ sudo modprobe -r rtw89_8852cu_git rtw89_usb_git rtw89_8852c_git rtw89_core_git
+$ sudo modprobe rtw89_8852cu_git
+
+And for good measure
+
+$ sudo make install_fw
+
+Green LED on dongle without steamvr running? Is that new? Maybe not? The headset was still on.
