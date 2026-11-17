@@ -426,3 +426,23 @@ And for good measure
 $ sudo make install_fw
 
 Green LED on dongle without steamvr running? Is that new? Maybe not? The headset was still on.
+
+# 2026-11-06
+
+Merged upstream into each branch.
+
+# 2026-11-17
+
+Merged upstream into each branch, to pull in new Valve-specific dongle firmware.
+
+  git fetch upstream
+  git merge upstream/main
+  git switch davenport
+  git merge main
+  git switch torsten
+  git merge main
+  git switch torstendavenport
+  git merge main
+  git push --all
+
+This is a really silly approach to maintaining this fork. I really should just bundle/submodule the patch files from the other repos and apply them to main... Also this file gets out of sync with the branches.
