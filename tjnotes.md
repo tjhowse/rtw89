@@ -444,5 +444,10 @@ Merged upstream into each branch, to pull in new Valve-specific dongle firmware.
   git switch torstendavenport
   git merge main
   git push --all
+  
 
 This is a really silly approach to maintaining this fork. I really should just bundle/submodule the patch files from the other repos and apply them to main... Also this file gets out of sync with the branches.
+
+Don't forget to update the firmware after building and installing the drive as above:
+
+  sudo make install_fw
